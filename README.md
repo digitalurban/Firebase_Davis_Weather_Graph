@@ -2,6 +2,8 @@
 
 This project visualizes weather data stored in a Firebase Realtime Database using Chart.js. The graph dynamically updates and displays live weather data, including wind speed, pressure, and rainfall. A responsive toolbar allows switching between different time ranges.
 
+![Weather Graph](https://github.com/digitalurban/Firebase_Davis_Weather_Graph/blob/main/screenshot.png)
+
 ## Features
 
 - **Real-time Updates**: Automatically fetches and displays live weather data from Firebase.

@@ -51,6 +51,8 @@ The Firebase Realtime Database must have a node named `loopData` containing weat
 - `pressure_mbar`: Atmospheric pressure in millibars (numeric).
 - `dayRain_mm`: Daily rainfall in millimeters (numeric).
 
+These can be edited depending on what data you want to display from the Loop Packet.
+
 Example entry:
 ```json
 {

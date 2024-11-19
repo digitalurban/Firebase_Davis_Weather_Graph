@@ -1,62 +1,206 @@
-# Weather Data Visualization
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Graph</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f9f9f9;
+      color: #333;
+    }
 
-This project visualizes weather data stored in a Firebase Realtime Database using Chart.js. The graph dynamically updates and displays live weather data, including wind speed, pressure, and rainfall. A responsive toolbar allows switching between different time ranges.
+    #chart-container {
+      width: 95%;
+      max-width: 1200px;
+      height: 70vh;
+      margin: 0 auto;
+      padding: 10px;
+    }
 
-## Features
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
 
-- **Real-time Updates**: Automatically fetches and displays live weather data from Firebase.
-- **Responsive Design**: Optimized for various screen sizes.
-- **Interactive Toolbar**: Switch between last 1, 6, or 12 hours of data.
-- **Status Indicator**: Green dot pulses when new data is received; turns red if no updates in the last 10 seconds.
+    #loading {
+      text-align: center;
+      font-size: 20px;
+      margin: 20px auto;
+      color: #555;
+    }
 
-## How to Set Up
+    #toolbar {
+      text-align: center;
+      margin: 10px auto 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
 
-1. **Clone or Download** this repository.
-2. **Set up Firebase**:
-   - Visit [Firebase Console](https://console.firebase.google.com/).
-   - Create a new project and enable the Realtime Database.
-   - Add weather data to a node named `loopData`. Data format example:
-     ```json
-     {
-       "loopData": {
-         "unique-id-1": {
-           "timestamp": 1637592000000,
-           "windSpeed_mph": 5.2,
-           "pressure_mbar": 1013.4,
-           "dayRain_mm": 2.1
-         },
-         ...
-       }
-     }
-     ```
-      - Go to **Project Settings > General** and scroll down to the **Your Apps** section.
-   - Select **Add App** and choose **Web**.
-   - Copy the Firebase configuration snippet and replace the placeholder `firebaseConfig` object in the HTML file with your Firebase credentials.
+    #toolbar button {
+      font-family: 'Roboto', sans-serif;
+      font-size: 14px;
+      padding: 10px 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: #fff;
+      cursor: pointer;
+      transition: background-color 0.3s, box-shadow 0.2s;
+    }
 
-3. **Host the App** (optional):
-   - You can use Firebase Hosting, GitHub Pages, or any web hosting service to host this HTML file.
-   - For Firebase Hosting:
-     - Install Firebase CLI: `npm install -g firebase-tools`
-     - Initialize Firebase in your project: `firebase init hosting`
-     - Deploy your app: `firebase deploy`
+    #toolbar button:hover {
+      background-color: #f0f0f0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
 
-4. **Open the HTML file** in a browser:
-   - Double-click the file to open it locally, or upload it to a web server for public access.
+    .status-dot {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      display: inline-block;
+      background-color: red;
+      animation: none;
+    }
 
-## Data Requirements
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+      }
+      50% {
+        box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+      }
+      100% {
+        box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+      }
+    }
 
-The Firebase Realtime Database must have a node named `loopData` containing weather data. Each entry should include the following fields:
-- `timestamp`: Unix timestamp in milliseconds.
-- `windSpeed_mph`: Wind speed in miles per hour (numeric).
-- `pressure_mbar`: Atmospheric pressure in millibars (numeric).
-- `dayRain_mm`: Daily rainfall in millimeters (numeric).
+    .status-dot.green {
+      background-color: green;
+      animation: pulse 1.5s infinite;
+    }
+  </style>
+  <!-- Firebase App SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Chart.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Moment.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@0.1.1"></script>
+</head>
+<body>
+  <h1 style="text-align: center; font-size: 2em; margin: 20px 0; color: #333;">
+    Weather Graph
+  </h1>
 
-Example entry:
-```json
-{
-  "timestamp": 1637592000000,
-  "windSpeed_mph": 7.5,
-  "pressure_mbar": 1012.6,
-  "dayRain_mm": 3.2
-}
+  <div id="loading">
+    Loading data...
+  </div>
 
+  <div id="toolbar">
+    <button onclick="updateChart(1)">Last 1 Hour</button>
+    <button onclick="updateChart(6)">Last 6 Hours</button>
+    <button onclick="updateChart(12)">Last 12 Hours</button>
+    <span class="status-dot" id="data-status"></span>
+  </div>
+
+  <div id="chart-container">
+    <canvas id="weatherChart"></canvas>
+  </div>
+
+  <script>
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const loopDataRef = database.ref('loopData');
+    const statusDot = document.getElementById("data-status");
+
+    // Show "Loading" Overlay
+    const showLoadingOverlay = () => {
+      document.getElementById('loading').style.display = 'block';
+    };
+
+    // Hide "Loading" Overlay
+    const hideLoadingOverlay = () => {
+      document.getElementById('loading').style.display = 'none';
+    };
+
+    let lastUpdateTimestamp = Date.now();
+
+    // Update Status Dot
+    const updateStatusDot = () => {
+      const now = Date.now();
+      if (now - lastUpdateTimestamp > 10000) {
+        statusDot.classList.remove("green");
+        statusDot.style.backgroundColor = "red";
+      }
+    };
+    setInterval(updateStatusDot, 5000);
+
+    const ctx = document.getElementById('weatherChart').getContext('2d');
+    const weatherChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Wind Speed (mph)', data: [], yAxisID: 'yWind', borderColor: 'red', backgroundColor: 'rgba(255, 0, 0, 0.1)' },
+          { label: 'Pressure (mbar)', data: [], yAxisID: 'yPressure', borderColor: 'gray', backgroundColor: 'rgba(128, 128, 128, 0.2)' },
+          { label: 'Rainfall (mm)', data: [], yAxisID: 'yRainfall', borderColor: 'blue', backgroundColor: 'rgba(0, 123, 255, 0.2)' }
+        ],
+      },
+      options: { responsive: true, maintainAspectRatio: false, animation: false }
+    });
+
+    const updateChart = (hours) => {
+      const now = Date.now();
+      const startTime = now - hours * 60 * 60 * 1000;
+
+      showLoadingOverlay();
+
+      loopDataRef.orderByChild('timestamp').startAt(startTime).limitToLast(10000).on('value', (snapshot) => {
+        const weatherData = [];
+        snapshot.forEach((childSnapshot) => {
+          const data = childSnapshot.val();
+          if (data && data.timestamp && data.windSpeed_mph && data.pressure_mbar && data.dayRain_mm) {
+            weatherData.push({ timestamp: parseInt(data.timestamp), windSpeed: parseFloat(data.windSpeed_mph), pressure: parseFloat(data.pressure_mbar), rainfall: parseFloat(data.dayRain_mm) });
+          }
+        });
+
+        if (weatherData.length > 0) {
+          lastUpdateTimestamp = Date.now();
+          statusDot.classList.add("green");
+          weatherData.sort((a, b) => a.timestamp - b.timestamp);
+          weatherChart.data.labels = weatherData.map((d) => new Date(d.timestamp));
+          weatherChart.data.datasets[0].data = weatherData.map((d) => d.windSpeed);
+          weatherChart.data.datasets[1].data = weatherData.map((d) => d.pressure);
+          weatherChart.data.datasets[2].data = weatherData.map((d) => d.rainfall);
+          weatherChart.update();
+        }
+
+        hideLoadingOverlay();
+      }, () => hideLoadingOverlay());
+    };
+
+    updateChart(12);
+  </script>
+</body>
+</html>

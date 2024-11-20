@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Data Visualization</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2em;
+      margin: 20px 0;
+      color: #333;
+    }
+    #forecast {
+      font-size: 1.2em;
+      margin: 20px auto;
+      padding: 10px;
+      color: #555;
+      width: 95%;
+      max-width: 1200px;
+      text-align: center;
+    }
+    #chart-container {
+      width: 95%;
+      max-width: 1200px;
+      height: 70vh;
+      margin: 0 auto;
+      padding: 10px;
+      position: relative;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #555;
+      z-index: 10;
+    }
+    #toolbar {
+      text-align: center;
+      margin: 10px auto 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+    #toolbar button {
+      font-family: 'Roboto', sans-serif;
+      font-size: 14px;
+      padding: 10px 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: #fff;
+      cursor: pointer;
+      transition: background-color 0.3s, box-shadow 0.2s;
+    }
+    #toolbar button:hover {
+      background-color: #f0f0f0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .status-dot {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      display: inline-block;
+      background-color: red;
+      animation: none;
+    }
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+      }
+      50% {
+        box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+      }
+      100% {
+        box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+      }
+    }
+    .status-dot.green {
+      background-color: green;
+      animation: pulse 1.5s infinite;
+    }
+  </style>
+  <!-- Firebase App (the core Firebase SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <!-- Firebase Realtime Database SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Chart.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Moment.js Library for time parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+  <!-- Chart.js adapter for Moment.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@0.1.1"></script>
+  <!-- MQTT Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js"></script>
+</head>
+<body>
+  <h1>Weather Graph</h1>
+  <div id="toolbar">
+    <button onclick="updateChart(1)">Last 1 Hour</button>
+    <button onclick="updateChart(6)">Last 6 Hours</button>
+    <button onclick="updateChart(12)">Last 12 Hours</button>
+    <button onclick="updateChart(24)">Last 24 Hours</button>
+    <span class="status-dot" id="data-status"></span>
+  </div>
+  <div id="chart-container">
+    <div id="loading-overlay">Loading data...</div>
+    <canvas id="weatherChart"></canvas>
+  </div>
+  <div id="forecast">Forecast: Loading...</div>
+  <script>
+    // Replace the Firebase configuration with your own credentials
+    const firebaseConfig = {
+      apiKey: "YOUR_FIREBASE_API_KEY",
+      authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+      databaseURL: "YOUR_FIREBASE_DATABASE_URL",
+      projectId: "YOUR_FIREBASE_PROJECT_ID",
+      storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+      appId: "YOUR_FIREBASE_APP_ID",
+      measurementId: "YOUR_FIREBASE_MEASUREMENT_ID",
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const loopDataRef = database.ref('loopData'); // Ensure 'loopData' exists in your Firebase
+
+    const statusDot = document.getElementById("data-status");
+    const loadingOverlay = document.getElementById("loading-overlay");
+    let lastUpdateTimestamp = Date.now();
+
+    const ctx = document.getElementById('weatherChart').getContext('2d');
+    const weatherChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Wind Speed (mph)',
+            data: [],
+            yAxisID: 'yWind',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1,
+            fill: true,
+            tension: 0.1,
+            pointRadius: 0,
+          },
+          {
+            label: 'Pressure (mbar)',
+            data: [],
+            yAxisID: 'yPressure',
+            borderColor: 'gray',
+            borderWidth: 1,
+            backgroundColor: 'rgba(128, 128, 128, 0.2)',
+            fill: false,
+            pointRadius: 0,
+          },
+          {
+            label: 'Rainfall (mm)',
+            data: [],
+            yAxisID: 'yRainfall',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1,
+            fill: false,
+            pointRadius: 0,
+          },
+          {
+            label: 'Temperature (°C)',
+            data: [],
+            yAxisID: 'yTemp',
+            borderColor: 'red',
+            borderWidth: 1,
+            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+            fill: false,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: 'minute' },
+            title: { display: true, text: 'Time' },
+          },
+          yWind: {
+            beginAtZero: true,
+            position: 'left',
+            title: { display: true, text: 'Wind Speed (mph)' },
+          },
+          yPressure: {
+            position: 'right',
+            title: { display: true, text: 'Pressure (mbar)' },
+          },
+          yRainfall: {
+            position: 'right',
+            beginAtZero: true,
+            title: { display: true, text: 'Rainfall (mm)' },
+          },
+          yTemp: {
+            position: 'left',
+            beginAtZero: true,
+            title: { display: true, text: 'Temperature (°C)' },
+          },
+        },
+      },
+    });
+
+    const updateChart = (hours) => {
+      const now = Date.now();
+      const startTime = now - hours * 60 * 60 * 1000;
+
+      showLoadingOverlay();
+      loopDataRef
+        .orderByChild('timestamp')
+        .startAt(startTime)
+        .on('value', (snapshot) => {
+          const weatherData = [];
+          snapshot.forEach((childSnapshot) => {
+            const data = childSnapshot.val();
+            if (data) {
+              weatherData.push({
+                timestamp: parseInt(data.timestamp),
+                windSpeed: parseFloat(data.windSpeed_mph),
+                pressure: parseFloat(data.altimeter_mbar),
+                rainfall: parseFloat(data.dayRain_mm),
+                temperature                : parseFloat(data.outTemp_C),
+              });
+            }
+          });
+
+          if (weatherData.length > 0) {
+            weatherData.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Update chart data
+            weatherChart.data.labels = weatherData.map((d) => new Date(d.timestamp));
+            weatherChart.data.datasets[0].data = weatherData.map((d) => d.windSpeed);
+            weatherChart.data.datasets[1].data = weatherData.map((d) => d.pressure);
+            weatherChart.data.datasets[2].data = weatherData.map((d) => d.rainfall);
+            weatherChart.data.datasets[3].data = weatherData.map((d) => d.temperature);
+            weatherChart.update('none'); // Update without animation
+
+            // Update status dot to green
+            lastUpdateTimestamp = Date.now();
+            statusDot.classList.add("green");
+            statusDot.style.backgroundColor = "green";
+          } else {
+            console.warn('No valid data available.');
+          }
+
+          hideLoadingOverlay();
+        }, (error) => {
+          console.error('Error fetching data:', error);
+          hideLoadingOverlay(); // Ensure overlay hides even on error
+        });
+    };
+
+    const showLoadingOverlay = () => {
+      loadingOverlay.style.display = "flex";
+    };
+
+    const hideLoadingOverlay = () => {
+      loadingOverlay.style.display = "none";
+    };
+
+    updateChart(12); // Load initial data for the last 12 hours
+
+    // MQTT Integration
+    var mqtt;
+    var reconnectTimeout = 2000;
+
+    // Replace with your MQTT server details
+    const host = "YOUR_MQTT_HOST"; // Example: mqtt.example.com
+    const port = 8080; // Adjust port if using WebSockets or secure connections
+    const options = {
+      timeout: 3,
+      onSuccess: onConnect,
+      onFailure: onFailure,
+      useSSL: false, // Set true if your MQTT server uses SSL
+    };
+
+    function onFailure(message) {
+      console.log("MQTT Connection Failed: ", message.errorMessage);
+      setTimeout(MQTTconnect, reconnectTimeout);
+    }
+
+    function onConnect() {
+      console.log("MQTT Connected");
+      mqtt.subscribe("YOUR_TOPIC"); // Replace with your MQTT topic
+    }
+
+    function MQTTconnect() {
+      mqtt = new Paho.MQTT.Client(host, port, "clientID" + Math.random());
+      mqtt.onMessageArrived = onMessageArrived;
+      mqtt.connect(options);
+    }
+
+    function onMessageArrived(message) {
+      if (message.destinationName === "YOUR_TOPIC") { // Replace with your MQTT topic
+        const forecast = message.payloadString + " Source: Your Weather Service";
+        document.getElementById("forecast").innerText = `Forecast: ${forecast}`;
+      }
+    }
+
+    // Start MQTT connection on page load
+    window.onload = function () {
+      MQTTconnect();
+    };
+
+    // Periodic check for data staleness
+    const updateStatusDot = () => {
+      const now = Date.now();
+      if (now - lastUpdateTimestamp > 10000) { // More than 10 seconds without data
+        statusDot.classList.remove("green");
+        statusDot.style.backgroundColor = "red";
+      }
+    };
+    setInterval(updateStatusDot, 5000); // Check every 5 seconds
+  </script>
+</body>
+</html>

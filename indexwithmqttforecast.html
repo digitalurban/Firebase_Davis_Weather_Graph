@@ -29,21 +29,21 @@
       text-align: center;
     }
     #chart-container {
-      width: 95%;
-      max-width: 1200px;
-      height: 70vh;
-      margin: 0 auto;
-      padding: 10px;
-      position: relative;
-      background-color: #ffffff;
-      border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
+  width: 95%;
+  max-width: 1200px;
+  margin: 0 auto;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden; /* Ensures no extra space is rendered */
+}
+
+canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0; /* Remove default margin */
+}
     #loading-overlay {
       position: absolute;
       top: 0;

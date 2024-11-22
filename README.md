@@ -65,4 +65,17 @@ Example entry:
   "pressure_mbar": 1012.6,
   "dayRain_mm": 3.2
 }
+ ```
+Firebase rules should be as follows
 
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": false,
+    "loopData": {
+      ".indexOn": ["timestamp"]
+    }
+  }
+}
+ ```

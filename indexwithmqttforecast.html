@@ -350,7 +350,7 @@
     // Periodic check for data staleness
     const updateStatusDot = () => {
       const now = Date.now();
-      if (now - lastUpdateTimestamp > 10000) { // More than 10 seconds without data
+      if (now - lastUpdateTimestamp > 61000) { // More than 1 min without data
         statusDot.classList.remove("green");
         statusDot.style.backgroundColor = "red";
       } else {
